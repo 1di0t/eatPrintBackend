@@ -57,12 +57,12 @@ def login():
     data = request.get_json()
     userid = data['userid']
     userpw = data['userpw']
-    
+    #check user id exists
     user = User.query.filter_by(userid=userid).first()
-    
+    #if user id does not exist
     if user is None:
         return jsonify({'message': 'User ID does not exist'}), 404
-
+    #check password when user id exists
     if not check_password_hash(user.userpw, userpw):
         return jsonify({'message': 'Incorrect password'}), 401
     
