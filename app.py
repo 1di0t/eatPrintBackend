@@ -1,12 +1,16 @@
 from flask import Flask, jsonify, request
 import os
 import boto3
-from botocore.exceptions import ClientError
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
+from flask_sqlalchemy import SQLAlchemy#SQLAlchemy SQL Toolkit libary
 from flask_migrate import Migrate
 from flask_cors import CORS
-from werkzeug.security import generate_password_hash, check_password_hash
+
+
+from botocore.exceptions import ClientError
+
+from werkzeug.security import generate_password_hash, check_password_hash#hashing password library
+
+from models import db, User
 
 
 app = Flask(__name__)
@@ -25,26 +29,28 @@ db_host = os.getenv("DB_HOST")
 app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{db_user}:{db_pass}@{db_host}/{db_name}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+db.init_app(app)
 migrate = Migrate(app, db)
 
 
 #MySQL
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    userid = db.Column(db.String(255), unique=True, nullable=False)
-    userpw = db.Column(db.String(255), nullable=False)
-    
+#===========================================================================================
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
     userid = data['userid']
     userpw = generate_password_hash(data['userpw'], method='pbkdf2:sha256')
-    print(f"{userid}\n{userpw}")
+    #get the user data from the request for check it exists or not
+    existing_user = User.query.filter_by(userid=userid).first()
+    #check duplicate user id
+    if existing_user:
+        return jsonify({'message': 'User ID already exists'}), 409
+    #create new user
     new_user = User(userid=userid, userpw=userpw)
     db.session.add(new_user)
     db.session.commit()
     return jsonify({'message': 'User registered successfully'}), 201
+    
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -54,9 +60,13 @@ def login():
     
     user = User.query.filter_by(userid=userid).first()
     
-    if user and check_password_hash(user.userpw, userpw):
-        return jsonify({'id': user.id, 'message': 'Login successful'}), 200
-    return jsonify({'message': 'Invalid credentials'}), 401
+    if user is None:
+        return jsonify({'message': 'User ID does not exist'}), 404
+
+    if not check_password_hash(user.userpw, userpw):
+        return jsonify({'message': 'Incorrect password'}), 401
+    
+    return jsonify({'id': user.id, 'message': 'Login successful'}), 200
 
 
 #dynamoDB
