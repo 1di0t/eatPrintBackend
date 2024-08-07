@@ -1,6 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 
-from geoalchemy2 import Geometry
+from geoalchemy2 import Geography, Geometry
 
 
 
@@ -15,18 +15,18 @@ class Users(db.Model):
     name = db.Column(db.String(100), nullable=False)
     nick_name = db.Column(db.String(100), nullable=False)
 
-    posts = db.relationship('Post', back_populates='user')
+    posts = db.relationship('Post', back_populates='USERS_TB')
 
 
 class Post(db.Model):
     __tablename__ = 'POST_TB'
     
     post_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_num = db.Column(db.Integer, db.ForeignKey('user.user_num'))
+    user_num = db.Column(db.Integer, db.ForeignKey('USERS_TB.user_num'))
     content = db.Column(db.Text)
-    location = db.Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
+    location = db.Column(Geography(geometry_type='POINT', srid=4326))
     
-    user = db.relationship('User', back_populates='posts')
+    user = db.relationship('Users', back_populates='POST_TB')
 
 class Hashtag(db.Model):
     __tablename__ = 'HASHTAG_TB'
