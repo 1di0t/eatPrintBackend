@@ -17,16 +17,23 @@ class Users(db.Model):
 
     posts = db.relationship('Post', back_populates='user')
 
+class Image(db.Model):
+    __tablename__ = 'image_tb'
+    
+    image_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    post_id = db.Column(db.Integer, db.ForeignKey('post_tb.post_id'),nullable=False)
+    url = db.Column(db.String(255), nullable=False)
+    
 
 class Post(db.Model):
     __tablename__ = 'post_tb'
     
     post_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_num = db.Column(db.Integer, db.ForeignKey('user_tb.user_num'))
-    image = db.Column(db.Text)
-    content = db.Column(db.Text)
-    location = db.Column(Geography(geometry_type='POINT', srid=4326))
+    content = db.Column(db.Text,nullable=True)
+    location = db.Column(Geography(geometry_type='POINT', srid=4326),nullable=True)
     
+    images = db.relationship('Image', backref='post', lazy=True)
     user = db.relationship('Users', back_populates='posts')
     hashtags = db.relationship('Hashtag', secondary='post_hashtag_tb', back_populates='posts')
 
