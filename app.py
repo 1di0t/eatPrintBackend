@@ -1,30 +1,72 @@
-from flask import Flask, jsonify, request
+import logging
 import os
 import boto3
-from flask_sqlalchemy import SQLAlchemy#SQLAlchemy SQL Toolkit libary
+from flask import Flask, jsonify, request
+
 from flask_migrate import Migrate
-from flask_cors import CORS
-
-
-from werkzeug.security import generate_password_hash, check_password_hash#hashing password library
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 
 from models import db, Users
 
 
 app = Flask(__name__)
 
+#DB connection=======================================================
 db_user = os.getenv("DB_USER")
 db_pass = os.getenv("DB_PASS")
 db_name = os.getenv("DB_NAME")
 db_host = os.getenv("DB_HOST")
 app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:5432/{db_name}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db.init_app(app)
 migrate = Migrate(app, db)
-#Posting section
-# @app.route('/post', methods=['POST'])
-# def post():
 
+#S3 connection=======================================================
+S3_BUCKET = os.getenv('BUCKET_NAME')
+S3_REGION = os.getenv('REGION_NAME')
+S3_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY_ID')
+S3_SECRET_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+
+s3 = boto3.client(
+    's3',
+    region_name=S3_REGION,
+    aws_access_key_id=S3_ACCESS_KEY,
+    aws_secret_access_key=S3_SECRET_KEY,
+)
+#uploading section=======================================================
+@app.route('/upload', methods=['POST'])
+def upload_image():
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'No \'image\' in the request'}), 400
+
+        file = request.files['image']
+        
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+    except:
+        return jsonify({'error': e}), 400
+    # 파일 이름 안전하게 만들기
+    filename = secure_filename(file.filename)
+
+    try:
+        s3.upload_fileobj(
+            file,
+            S3_BUCKET,
+            filename,
+            ExtraArgs={"ACL": "public-read", "ContentType": file.content_type}
+        )
+    except Exception as e:
+        app.logger.error(f"Error occurred: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+    # 업로드된 파일의 URL 생성
+    file_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{filename}"
+
+    return jsonify({'image_url': file_url}), 201
+    
 #User Registration and Login
 #===========================================================================================
 @app.route('/register', methods=['POST'])
@@ -68,6 +110,7 @@ def login():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
     app.run(debug=True)
 
