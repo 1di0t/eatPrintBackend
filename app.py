@@ -4,10 +4,11 @@ import boto3
 from flask import Flask, jsonify, request
 
 from flask_migrate import Migrate
+from sqlalchemy import insert
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
-from models import db, Users
+from models import db, Users, Post, Image, Hashtag, posthashtag_table
 
 
 app = Flask(__name__)
@@ -35,7 +36,7 @@ s3 = boto3.client(
     aws_access_key_id=S3_ACCESS_KEY,
     aws_secret_access_key=S3_SECRET_KEY,
 )
-#uploading section=======================================================
+#uploading section======================================================= 미완이여
 @app.route('/upload', methods=['POST'])
 def upload_image():
     try:
@@ -48,7 +49,7 @@ def upload_image():
             return jsonify({'error': 'No selected file'}), 400
     except:
         return jsonify({'error': e}), 400
-    # 파일 이름 안전하게 만들기
+
     filename = secure_filename(file.filename)
 
     try:
@@ -56,7 +57,7 @@ def upload_image():
             file,
             S3_BUCKET,
             filename,
-            ExtraArgs={"ACL": "public-read", "ContentType": file.content_type}
+            ExtraArgs={"ACL": "public-read", "ContentType": file.content_type}#public to private?
         )
     except Exception as e:
         app.logger.error(f"Error occurred: {str(e)}")
@@ -66,8 +67,47 @@ def upload_image():
     file_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{filename}"
 
     return jsonify({'image_url': file_url}), 201
+
+# posting section=======================================================
+@app.route('/post', methods=['POST'])
+def post():
+    data = request.get_json()
+    user_num = data['user_num']
+    content = data['content']
+    location = data['location']#nullable
+    imageUrls = data['imageUrls']
+    hashtags = data['hashtags']#nullable
+
+    #convert location to WKT
+    if location:
+        location_wkt = f'POINT({location["longitude"]} {location["latitude"]})'
+    else:
+        location_wkt = None 
+
+    new_post = Post(user_num=user_num, content=content, location=location_wkt)
+    db.session.add(new_post)
+    db.session.commit()
     
-#User Registration and Login
+    for imageUrl in imageUrls:
+        new_image = Image(post_id=new_post.post_id, url=imageUrl)
+        db.session.add(new_image)
+    db.session.commit()
+#================================================================================================
+    for tag in hashtags:
+        existing_tag = Hashtag.query.filter_by(tag_name=tag).first()#check if tag exists
+        if not existing_tag:#if tag does not exist, create new tag
+            new_tag = Hashtag(tag_name=tag)
+            db.session.add(new_tag)
+            db.session.commit()
+            existing_tag = new_tag
+
+        stmt = insert(posthashtag_table).values(post_id=new_post.post_id, tag_id=existing_tag.tag_id)
+        db.session.execute(stmt)
+    db.session.commit()
+
+    return jsonify({'message': 'Post created successfully'}), 201
+
+# User Registration and Login
 #===========================================================================================
 @app.route('/register', methods=['POST'])
 def register():
@@ -102,7 +142,7 @@ def login():
     if not check_password_hash(user.user_pw, userpw):
         return jsonify({'message': 'Incorrect password'}), 401
     
-    return jsonify({'id': user.user_num, 'message': 'Login successful'}), 200
+    return jsonify({'user_num': user.user_num, 'message': 'Login successful'}), 200
 
 
 
