@@ -7,6 +7,8 @@ from flask_migrate import Migrate
 from sqlalchemy import insert
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from geoalchemy2.shape import to_shape
+from geoalchemy2.elements import WKTElement
 
 from models import db, Users, Post, Image, Hashtag, posthashtag_table
 
@@ -66,7 +68,7 @@ def upload_image():
     # 업로드된 파일의 URL 생성
     file_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{filename}"
 
-    return jsonify({'image_url': file_url}), 201
+    return file_url, 201
 
 # posting section=======================================================
 @app.route('/post', methods=['POST'])
@@ -100,12 +102,44 @@ def post():
             db.session.add(new_tag)
             db.session.commit()
             existing_tag = new_tag
+            
 
         stmt = insert(posthashtag_table).values(post_id=new_post.post_id, tag_id=existing_tag.tag_id)
         db.session.execute(stmt)
     db.session.commit()
 
     return jsonify({'message': 'Post created successfully'}), 201
+
+
+@app.route('/post', methods=['GET'])
+def get_post():
+    posts = Post.query.all()
+    post_list = []
+    for post in posts:
+        post_dict = post.__dict__#convert to dictionary 
+        post_dict.pop('_sa_instance_state')#remove _sa_instance_state key that manage the state of the object
+
+        location = post_dict['location']
+        if location:
+            point = to_shape(location)#convert WKT to shapely geometry == point
+            post_dict['location'] = {
+                'latitude': point.y,
+                'longitude': point.x
+            }
+        else:
+            post_dict['location'] = None
+
+        images = Image.query.filter_by(post_id=post_dict['post_id']).all()
+        image_urls = []
+        for image in images:
+            image_urls.append(image.url)
+        post_dict['imageUrls'] = image_urls
+
+        # hashtags = db.session.query(Hashtag.tag_name).join(posthashtag_table).filter(posthashtag_table.c.post_id == post_dict['post_id']).all()
+        # post_dict['hashtags'] = [tag[0] for tag in hashtags]
+
+        post_list.append(post_dict)
+    return jsonify(post_list), 200
 
 # User Registration and Login
 #===========================================================================================
