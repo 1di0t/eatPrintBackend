@@ -111,17 +111,25 @@ def post():
     return jsonify({'message': 'Post created successfully'}), 201
 
 
-@app.route('/post', methods=['GET'])
+@app.route('/post', methods=['GET'])#get with date descending order
 def get_post():
-    posts = Post.query.all()
+    posts = db.session.query(Post, Users).join(Users, Post.user_num == Users.user_num).all()#except situation when connection is lost
     post_list = []
-    for post in posts:
-        post_dict = post.__dict__#convert to dictionary 
-        post_dict.pop('_sa_instance_state')#remove _sa_instance_state key that manage the state of the object
-
+    for post,user in posts:
+        #convert to dictionary 
+        post_dict = {
+                'post_id': post.post_id,
+                'user_num': post.user_num,
+                'user_nickname': user.nick_name if user else 'Unknown User',
+                'content': post.content,
+                'location': None,
+                'imageUrls': []
+           }
+        
         location = post_dict['location']
         if location:
-            point = to_shape(location)#convert WKT to shapely geometry == point
+            #convert WKT to shapely geometry == point
+            point = to_shape(location)
             post_dict['location'] = {
                 'latitude': point.y,
                 'longitude': point.x
@@ -139,6 +147,7 @@ def get_post():
         # post_dict['hashtags'] = [tag[0] for tag in hashtags]
 
         post_list.append(post_dict)
+        
     return jsonify(post_list), 200
 
 # User Registration and Login
